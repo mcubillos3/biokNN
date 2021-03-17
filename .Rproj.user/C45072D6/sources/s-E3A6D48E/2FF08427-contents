@@ -1,0 +1,169 @@
+---
+title: "Bench_Data"
+author: "Max"
+date: "28 feb 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(mice)
+library(impute)
+library(lme4)
+library(cluster)
+library(ggplot2)
+library(miceadds)
+library(micemd)
+library(psych)
+library("irr")
+
+alpha <- 0.8
+knn <- 10
+
+prop_miss <- c(0.1, 0.3, 0.5, 0.7)
+amp_method <- "MCAR"
+
+names <- c("machine",  "cbpp", "sleepstudy") #"auto-mpg", "winequality"
+nSim <- 100
+
+sink("logfile_bench_rmse.txt")
+cat("iter;miss;dataset;method;mean_clust;sd_clust;ICC;ICC_low;ICC_high;RMSE;MAE;ACC;time")
+cat("\n")
+
+for(i in 1:nSim){
+  for(miss in prop_miss){
+    for(data in names){
+      file <- paste0("datasets/",data, ".csv")
+      df_obs <- read.csv2(file = file, header = F) %>% mutate_all(as.character) %>% mutate_at(vars(-V1), as.numeric) %>% mutate(V1 =as.factor(V1))
+      
+      ICC_all <- ICC(df_obs %>% mutate_all(as.numeric))$results[6,]
+      ICC <- ICC_all[2]
+      ICC_low <- ICC_all[7]
+      ICC_high <- ICC_all[8]
+      
+      mean_clust <- mean(table(df_obs$V1))
+      sd_clust <- sd(table(df_obs$V1))
+      
+      df_obs <- normalize(df_obs)
+      clust_var <- df_obs$V1
+      df_obs$V1 <- NULL
+      df_amp <- ampute(df_obs, prop = miss, mech = amp_method)
+      df_miss <- df_amp$amp 
+      df_miss$V1 <- clust_var 
+      df_miss <- df_miss %>% select(V1, everything())
+      df_obs <- df_obs %>% mutate(V1 = clust_var) %>% select(V1, everything())
+      
+      
+      result_all <- get.results.all(df_obs, df_miss, nIter, alpha, knn)
+      
+      method2 <- c("mean", "pmm", "knn", "multi.imp")
+      k <- 1
+      for(meth in method2){
+        cat(paste0(i, ";",miss, ";", data, ";", meth, ";", mean_clust, ";", sd_clust, ";", ICC, ";", ICC_low, ";", ICC_high, ";",
+                   result_all[k, 1], ";", result_all[k, 2], ";", result_all[k, 3], ";", result_all[k, 4]))
+        cat("\n")
+        
+        k <- k + 1
+      }
+      
+      methods <- c("2l.norm", "2l.pan",  "2lonly.mean") #"2l.lmer",
+      
+      for(meth in methods){
+        result <- get.results.benchmark(df_obs, df_miss, meth)  
+        cat(paste0(i, ";", miss, ";", data, ";", meth, ";",  mean_clust, ";", sd_clust, ";", ICC, ";", ICC_low, ";", ICC_high, ";",
+                   result[1], ";", result[2], ";", result[3], ";", result[4]))
+        cat("\n")
+      }
+      
+    }
+  }
+}
+
+
+sink()
+
+
+
+get.results.benchmark <- function(df, df_miss, meth){
+  
+  start.time <- Sys.time()
+  indx_miss <-  get.index.miss(df_miss)
+  imp <- impute_2l(df_miss, meth) 
+  end.time <- Sys.time()
+  time <- end.time - start.time
+  rm <- get.RMSE(df, imp,indx_miss)
+  ma <-  get.MAE(df, imp, indx_miss)
+  acc <- get.Accuracy.clust(df, imp, indx_miss)
+  res_multi <- c(rm, ma, acc, time)
+  res_multi
+  
+}
+
+impute_2l <- function(df_miss, method){
+  d <- df_miss
+  d[[1]] <- as.numeric(factor(d[[1]]))
+  pred <- make.predictorMatrix.multi(d) 
+  meth <- get.methods.2l(method, df_miss)
+  imp <- complete(mice(d, pred = pred, meth = meth, print = FALSE))
+  imp
+}
+
+
+start.time <- Sys.time()
+
+end.time <- Sys.time()
+time <- end.time - start.time
+
+
+get.results.all <- function(df, df_miss, nIter, alpha, k){
+  all <- c()
+  indx_miss <-  get.index.miss(df_miss)
+  
+  start.time <- Sys.time()
+  imp <- impute.benchmark(df_miss, "mean")
+  end.time <- Sys.time()
+  time <- end.time - start.time
+  
+  rm <- get.RMSE(df, imp,indx_miss)
+  ma <-  get.MAE(df, imp, indx_miss)
+  acc <- get.Accuracy.clust(df, imp, indx_miss)
+  all <- rbind(all, c(rm, ma, acc, time))
+  
+  start.time <- Sys.time()
+  imp <- impute.benchmark(df_miss, "pmm")
+  end.time <- Sys.time()
+  time <- end.time - start.time
+
+  rm <- get.RMSE(df, imp,indx_miss)
+  ma <-  get.MAE(df, imp, indx_miss)
+  acc <- get.Accuracy.clust(df, imp, indx_miss)
+  all <- rbind(all, c(rm, ma, acc, time))
+  
+  start.time <- Sys.time()
+  imp <- impute_knn(df_miss, k)
+  end.time <- Sys.time()
+  time <- end.time - start.time
+  
+  
+  rm <- get.RMSE(df, imp,indx_miss)
+  ma <-  get.MAE(df, imp, indx_miss)
+  acc <- get.Accuracy.clust(df, imp, indx_miss)
+  all <- rbind(all, c(rm, ma, acc,time))
+  
+  start.time <- Sys.time()
+  imp <- impute.multilevel.num(df_miss, nIter, alpha, k)
+  end.time <- Sys.time()
+  time <- end.time - start.time
+  
+  rm <- get.RMSE(df, imp,indx_miss)
+  ma <-  get.MAE(df, imp, indx_miss)
+  acc <- get.Accuracy.clust(df, imp, indx_miss)
+  all <- rbind(all, c(rm, ma, acc, time))
+  
+  all
+  
+}
+```
+

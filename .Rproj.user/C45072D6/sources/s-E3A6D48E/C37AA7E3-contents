@@ -1,0 +1,1029 @@
+---
+title: "OptMulti"
+author: "Max"
+date: "26 nov 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(mice)
+library(impute)
+library(lme4)
+library(cluster)
+
+
+#Parameters
+prop_miss <- 0.3
+prop_valid <- 0.1
+amp_method <- "MCAR"
+clust_var <- "V1"       # need name of clustering variable
+df <- read.csv(file = "datasets/machine.csv", header = F) %>% 
+         select(-V2) %>% select(clust_var, everything()) %>% mutate(V11 = sample(V1), V12 = sample(V1))
+#df <- df_obs %>% select(clust_var, everything()) 
+
+clust <- df %>% select(clust_var) 
+W <- df  %>% select(-clust_var) %>% select_if(is.numeric)
+V <- df  %>% select(-clust_var) %>% select_if(~!is.numeric(.x))
+df <- cbind(clust, W, V)  
+nIter <-  20
+delta0 <- 0.01
+alpha <- 0.9
+knn <- 10
+#res <- matrix(ncol = length(kNN), nrow = length(alpha))
+#t <- 1
+
+
+#df <- df_obs %>% select(clust_var, everything()) 
+df <- normalize(df)
+df_amp <- ampute(df, prop = prop_miss, mech = amp_method)
+df_miss <- df_amp$amp 
+
+methods <- c("mean", "pmm")
+res_all <- get.results(df, df_miss, nIter, alpha, knn) 
+res_all
+  
+
+cal_vals <- calibrate(df_miss, prop_valid, nIter, delta0)
+cal_vals <- c(1, 10)
+
+index_miss <-get.index.miss(df_miss)
+imp <- impute.multilevel(df_miss, nIter, alpha, knn)
+get.RMSE(df, imp, get.index.miss(df_miss))
+get.Accuracy(df, imp, get.index.miss(df_miss))
+
+write.csv(res_all, file ="res.csv")
+  
+```
+
+```{r}
+
+nClusters <- c(25)
+sizeCluster <- 20
+sigma2 <- 1
+beta0 <- 1
+beta <- 1
+tau <- 1
+tau0 <- c(1.5)
+
+alpha <- 0.5
+knn <- 10
+
+df <- create.logistic.data(nClust, sizeCluster, beta0, tau0, beta, tau, sigma2)
+df <- normalize(df)
+df_amp <- ampute(df, prop = prop_miss, mech = amp_method)
+df_miss <- df_amp$amp 
+
+df_obs <- df
+index_miss <- get.index.miss(df_miss)
+
+imp <- impute.multilevel.2(df_miss, nIter, 0.1, 10)
+
+get.RMSE(df, imp, get.index.miss(df_miss))
+get.Accuracy(df, imp, get.index.miss(df_miss))
+#get.Accuracy.clust(df, imp2, get.index.miss(df_miss))
+
+
+imp2 <- impute_knn(df_miss, 10)
+get.RMSE(df, imp2, get.index.miss(df_miss))
+get.Accuracy(df, imp2, get.index.miss(df_miss))
+
+imp3 <- complete(mice(df_miss, meth = c("polyreg", "mean", "polyreg"), print = FALSE))
+get.RMSE(df, imp3, get.index.miss(df_miss))
+get.Accuracy(df, imp3, get.index.miss(df_miss))
+get.Accuracy.clust()
+
+
+methods <- c("mean", "pmm")
+res_all <- get.results(df, df_miss, nIter, alpha, knn) 
+res_all
+
+```
+
+```{r}
+res <- calibrate(df_miss, 0.3, 30, 0.01)
+
+
+alpha_k <- which(res == min(res), arr.ind = TRUE)
+res[alpha_k[1], alpha_k[2]]
+
+plot(seq(0,1,by=0.1), res[,5])
+
+
+rm <- c()
+ma <- c()
+for(t in 1:5){
+  imp <- impute.multilevel(df_miss, clust_var, nIter, cal_vals[1], cal_vals[2], delta0)
+  rm <- c(rm, get.RMSE(df, imp, get.index.miss(df_miss)))
+  ma <- c(ma, get.MAE(df, imp, get.index.miss(df_miss)))
+}
+res_multi <- c(mean(rm), mean(ma))
+
+
+```
+
+
+```{r}
+
+get.results <- function(df, df_miss, nIter, alpha, k){
+  
+  methods <- c("mean", "pmm")
+  #Results are average of 5 runs
+  rm <- c()
+  ma <- c()
+  acc <- c()
+  acc2 <- c()
+
+  #for(t in 1:5){
+    imp <- impute.multilevel.2(df_miss, nIter, alpha, k)  # impute.multilevel.num(df_miss, nIter, alpha, k)
+    rm <- c(rm, get.RMSE(df, imp, get.index.miss(df_miss)))
+    ma <- c(ma, get.MAE(df, imp, get.index.miss(df_miss)))
+    acc <- c(acc, get.Accuracy.clust(df, imp, get.index.miss(df_miss)))
+    acc2 <- c(acc2, get.Accuracy(df, imp, get.index.miss(df_miss)))
+
+  #}
+  res_multi <- c(mean(rm), mean(ma), mean(acc), mean(acc2))
+  res_bench <- results.benchmark(df, df_miss, methods)
+  res_all <- cbind(res_bench, res_multi)
+  res_all
+
+}
+
+
+results.benchmark <- function(df, df_miss, methods){
+  
+  RMSE <- matrix(nrow=1, ncol = length(methods) + 2)
+  MAE <- matrix(nrow=1, ncol = length(methods) + 2)
+  ACC <- matrix(nrow=1, ncol = length(methods) + 2)
+  ACC2 <- matrix(nrow=1, ncol = length(methods) + 2)
+
+  i <- 1
+  for(m in methods){
+    rm <- c()
+    ma <- c()
+    acc <- c()
+    acc2 <- c()
+    #for(t in 1:5){
+      imp <- impute.benchmark(df_miss, m)
+      rm <- c(rm, get.RMSE(df, imp, get.index.miss(df_miss)))
+      ma <- c(ma, get.MAE(df, imp, get.index.miss(df_miss)))
+      acc <- c(acc, get.Accuracy.clust(df, imp, get.index.miss(df_miss)))
+      acc2 <- c(acc2, get.Accuracy(df, imp, get.index.miss(df_miss)))
+
+    #}
+    
+    RMSE[1, i] <- mean(rm)
+    MAE[1, i] <- mean(ma)
+    ACC[1, i] <- mean(acc)
+    ACC2[1, i] <- mean(acc2)
+
+    i <- i + 1
+  }
+  
+  rm <- c()
+  ma <- c()
+  acc <- c()
+  acc2 <- c()
+
+  #for(t in 1:5){
+    imp <- impute_knn(df_miss, 10)
+    rm <- c(rm, get.RMSE(df, imp, get.index.miss(df_miss)))
+    ma <- c(ma, get.MAE(df, imp, get.index.miss(df_miss)))
+    acc <- c(acc, get.Accuracy.clust(df, imp, get.index.miss(df_miss)))
+    acc2 <- c(acc2, get.Accuracy(df, imp, get.index.miss(df_miss)))
+
+  #}
+  
+  RMSE[1, i] <- mean(rm)
+  MAE[1, i] <- mean(ma)
+  ACC[1, i] <- mean(acc)
+  ACC2[1, i] <- mean(acc2)
+
+  i <- i + 1
+  
+  rm <- c()
+  ma <- c()
+  acc <- c()
+    acc2 <- c()
+
+  #for(t in 1:5){
+    imp <- impute_2lnorm(df_miss)
+    rm <- c(rm, get.RMSE(df, imp, get.index.miss(df_miss)))
+    ma <- c(ma, get.MAE(df, imp, get.index.miss(df_miss)))
+    acc <- c(acc, get.Accuracy.clust(df, imp, get.index.miss(df_miss)))
+        acc2 <- c(acc2, get.Accuracy(df, imp, get.index.miss(df_miss)))
+
+  #}
+
+  RMSE[1, i] <- mean(rm)
+  MAE[1, i] <- mean(ma)
+  ACC[1, i] <- mean(acc)
+    ACC2[1, i] <- mean(acc2)
+
+  result <- rbind(RMSE, MAE, ACC, ACC2)
+  result
+}
+
+impute.benchmark <- function(df_miss, method){
+  meth <- get.methods(method, df_miss)
+  imp<- complete(mice(df_miss, meth = meth, m = 1, print = FALSE))
+  imp
+}
+
+get.method.vector.multi <- function(method){
+  n <- ncol(df_miss)-1
+  method_num <- matrix(nrow=1, ncol =n)
+  for(i in 1:n){
+    method_num[1, i] <- method
+  }
+  method <- c("rf", method_num)
+  method
+}
+
+
+impute_knn <- function(df_miss, K){
+  d <- df_miss
+  d[[1]] <- as.numeric(factor(d[[1]]))
+  imp <- impute.knn(as.matrix(d), k = K)$data
+  imp
+}
+
+impute_2lnorm <- function(df_miss){
+  d <- df_miss
+  d[[1]] <- as.numeric(factor(d[[1]]))
+  pred <- make.predictorMatrix.multi(d) 
+  meth <- get.methods.2l("2l.norm", df_miss)
+  imp <- complete(mice(d, pred = pred, meth = meth, print = FALSE))
+  imp
+}
+
+get.method.vector <- function(method){
+  n <- ncol(df_miss)-1
+  method_num <- matrix(nrow=1, ncol =n)
+  for(i in 1:n){
+    method_num[1, i] <- method
+  }
+  method <- c("", method_num)
+  method
+}
+
+get.methods <- function(method, x){
+  meth <- c()
+  for(i in 1:ncol(x)){
+    meth <- c(meth, ifelse(is.numeric(x[ ,i]), method, ""))
+  }  
+  meth  
+}
+
+get.methods.2l <- function(method, x){
+  meth <- c()
+  for(i in 1:ncol(x)){
+    meth <- c(meth, ifelse(is.numeric(x[ ,i]), method, ""))
+  }  
+  meth  
+}
+
+
+
+make.predictorMatrix.multi <- function(m){
+  pred <- make.predictorMatrix(m) 
+  n <- ncol(m)
+  for(i in 2:n){
+    for(j in 1:n){
+      if(i != j){
+        pred[i, j] <- 2
+      }
+    }
+  }
+  pred[, 1] <- -2   # first is the clustering variable
+  pred[1, 1] <- 0
+  pred
+}
+
+
+calibrate.num <- function(df_miss, prop_valid, nIter){
+  
+  orig_pattern <- get.index.miss(df_miss)
+  df_miss_valid <- make.missing(df_miss, make.pattern(df_miss, prop_valid))
+  valid_pattern <- get.valid.pattern(orig_pattern, df_miss_valid)
+  alpha <- seq(0.7, 1, by = 0.05)
+  k <- 10#seq(5, 30, by =5)
+  metrics <- matrix(ncol = length(k), nrow = length(alpha))
+
+  j <- 1
+  for(knn in k){
+    i <- 1
+    for(a in alpha){
+        imp_val <- impute.multilevel.num.calibrate(df_miss_valid, valid_pattern, nIter, a, knn)
+        RMSE <- get.RMSE(df_miss, imp_val, valid_pattern)
+        metrics[i, j] <- RMSE
+        i <- i + 1
+    }
+    j <- j + 1
+  }
+  best_ind <- which(metrics == min(metrics), arr.ind = TRUE)
+  alpha_k <- c(alpha[best_ind[1]], k[best_ind[2]])
+}
+
+
+make.missing <- function(data, pattern){
+  vars <- ncol(data)
+  for(i in 1:vars){
+      data[pattern[ , i] == 1, i] <- NA
+  }
+  data
+}
+
+
+make.pattern <- function(data, p = 0.1){
+  vars <- ncol(data) - 1
+  prop <- p/vars
+  pattern <- rep(0, nrow(data))
+  for(i in 1:vars){
+     pattern <- cbind(pattern, rbinom(nrow(data), 1, prop))
+  }
+  pattern
+}
+
+
+get.valid.pattern <- function(orig_pattern, df_miss_valid){
+  n <- nrow(df_miss_valid)
+  p <- ncol(df_miss_valid)
+  index_miss_valid <- matrix(NA, ncol = p, nrow = n)
+  index_miss_joint <- get.index.miss(df_miss_valid)
+  
+  for(j in 1:p){
+    for(i in 1:n){
+      orig <- orig_pattern[i,j]
+      joint <- index_miss_joint[i,j]
+      if(orig == 0 & joint !=0){
+        index_miss_valid[i,j] <- joint
+      } else {
+        index_miss_valid[i,j] <- 0
+      }
+    }
+  }
+  index_miss_valid
+}
+
+
+
+
+``` 
+
+
+
+
+```{r}
+
+impute.multilevel <- function(df_miss, nIter, alpha, kNN){
+  
+  W <- df_miss %>% select(-1) %>% select_if(is.numeric)
+  V <- df_miss %>% select(-1) %>% select_if(~!is.numeric(.x))
+  
+  vars_W <- ncol(W)
+  vars_V <- ncol(V)
+  rows <- nrow(df_miss)
+  
+  neighbors <- matrix(nrow = rows, ncol = kNN)
+  index_miss_clust <- 1:rows*is.na(df_miss[,1])
+  
+  initial_random <- complete(mice(df_miss, meth = "sample", m = 1, print = FALSE))
+  
+  clust_old <- setNames(initial_random[,1], 1:rows)
+  
+  # warm start
+  W_old <- initial_random %>% select(-1) %>% select_if(is.numeric)
+  index_miss_vars_W <- get.index.miss(W)
+  if(vars_V>0){ 
+    V_old <-  initial_random %>% select(-1) %>% select_if(~!is.numeric(.x))
+    index_miss_vars_V <- get.index.miss(V)
+  }
+  
+  iter <-1 
+
+  while(iter < nIter){
+    
+    # Step 1: Update cluster assignment
+    dist <-   as.matrix(daisy(M, metric = "gower")) #dist(M, method = "euclidean")
+    clust_new <- clust_old
+    neighbors <- get.neighbors(as.matrix(dist), kNN)
+    
+    for(i in index_miss_clust){
+      if(i != 0){
+        best_neighbors <- neighbors[i,]
+        w_clust <- clust_old[i]
+        has_neigh <- has.x.as.neighbor(i, neighbors)
+        clust_neighbors <- as.numeric(names(clust_old[clust_old==w_clust]))
+        best_clust <- mode_weighted(clust_old[best_neighbors], clust_old[clust_neighbors], alpha)#my_mode(c(clust_old[best_neighbors], clust_old[clust_neighbors]))
+        clust_new[i] <- best_clust
+      }
+    }
+    clust_old <- clust_new
+    #print(clust_old)
+    # Step 2: Update imputations
+    # Variable d,  observation i
+    W_new <- W_old
+    for(d in 1:(vars_W)){
+      for(i in index_miss_vars_W[,d]){
+        if(i != 0){
+          w_clust <- clust_old[i]
+          sum_kNN <- sum(W_new[neighbors[i,], d])
+          has_neigh <- has.x.as.neighbor(i, neighbors)
+          sum_neigh <- sum(W_new[has_neigh, d])
+          w_knn <- (sum_kNN + sum_neigh)/(kNN + length(has_neigh))
+          w_cluster <- mean(W_new[as.numeric(names(clust_old[clust_old==w_clust])), d])
+          W_new[i,d] <- alpha*w_knn + (1-alpha)*w_cluster 
+          
+        }
+      }
+    }
+    W_old <- W_new
+    #print(W_old)
+    #cost_new <- get.cost(W_old, clust_old, neighbors, index_miss_vars_W, alpha)
+    # delta <- abs(cost_old - cost_new)
+    # 
+    # cost_old <- cost_new
+    #print(cost_new)
+    #print(delta)
+    if(vars_V>0){
+      V_new <- V_old
+      for(d in 1:(vars_V)){
+        for(i in index_miss_vars_V[,d]){
+          if(i != 0){
+            v_clust <- clust_old[i]
+            freq_kNN <- as.character(V_new[neighbors[i,], d])
+            has_neigh <- has.x.as.neighbor(i, neighbors)
+            freq_neigh <- as.character(V_new[has_neigh, d])
+            freq_cluster <- as.character(V_new[as.numeric(names(clust_old[clust_old==v_clust])), d])
+            V_new[i,d] <- mode_weighted(freq_kNN, freq_cluster, alpha)  # freq_cluster
+
+          }
+        }
+      }
+
+      V_old <- V_new
+    }
+    iter <- iter + 1 
+    acc <- get.Accuracy(df_obs, cbind(clust_old, W_old, V_old), index_miss)
+    print(acc)
+    rmse <- get.RMSE(df_obs, cbind(clust_old, W_old, V_old), index_miss)
+    print(rmse)
+    M <- cbind(clust_old, W_old, V_old)
+
+  }
+  cbind(clust_old, W_old, V_old)
+  #cbind(clust_old, W_old)
+}
+
+
+get.col.type <- function(x){
+  types <- c()
+  for(i in 1:ncol(x)){
+    types <- c(types, ifelse(is.numeric(x[ ,i]), "num", "cat"))
+  }
+  types
+}
+
+
+
+impute.multilevel.2 <- function(df_miss, nIter, alpha, kNN){
+  
+  vars <- ncol(df_miss)
+  rows <- nrow(df_miss)
+  neighbors <- matrix(nrow = rows, ncol = kNN)
+  index_miss <- get.index.miss(df_miss)
+  col_types <- get.col.type(df_miss)
+  
+  M <- complete(mice(df_miss, meth = "sample", m = 1, print = FALSE))
+  clusters <- setNames(as.matrix(M[, 1]), 1:rows)
+  iter <-1
+  #acc <- get.Accuracy(df_obs, M, index_miss)
+  #print(acc)
+  #rmse <- get.RMSE(df_obs, M, index_miss)
+  #print(rmse)
+  
+  while(iter < nIter){
+    dist <- as.matrix(daisy(M, metric = "gower")) #as.matrix(daisy(M, metric = "gower")) 
+    neighbors <- get.neighbors(as.matrix(dist), kNN)
+    clusters <- setNames(as.matrix(M[, 1]), 1:rows)
+    #column by column
+    for(j in 1:vars){
+      for(i in index_miss[, j]){
+        if(i != 0){
+          clust_val <- clusters[i]
+          if(col_types[j] == "num"){
+            sum_kNN <- sum(M[neighbors[i,], j])
+            has_neigh <- has.x.as.neighbor(i, neighbors)
+            sum_neigh <- sum(M[has_neigh, j])
+            m_knn <- (sum_kNN + sum_neigh)/(kNN + length(has_neigh))
+            m_cluster <- mean(M[as.numeric(names(clusters[clusters==clust_val])), j])
+            M[i, j] <- alpha*m_knn + (1-alpha)*m_cluster 
+          } else {
+            freq_kNN <- as.character(M[neighbors[i,], j])
+            has_neigh <- has.x.as.neighbor(i, neighbors)
+            freq_neigh <- as.character(M[has_neigh, j])
+            freq_cluster <- as.character(M[as.numeric(names(clusters[clusters==clust_val])), j])
+            M[i, j] <- mode_weighted(freq_kNN, freq_cluster, alpha)
+          } 
+        }
+      }
+    }
+    iter <- iter + 1
+    #acc <- get.Accuracy(data, M, index_miss)
+    #print(acc)
+    #rmse <- get.RMSE(data, M, index_miss)
+    #print(rmse)
+  }
+  
+  M
+  
+}
+
+
+
+
+
+
+
+
+
+impute.multilevel.num <- function(df_miss, nIter, alpha, kNN){
+  
+  vars <- ncol(df_miss)
+  rows <- nrow(df_miss)
+  
+  neighbors <- matrix(nrow = rows, ncol = kNN)
+  index_miss_clust <- 1:rows*is.na(df_miss[,1])
+  index_miss_vars <- get.index.miss(df_miss)
+
+  M_old <- complete(mice(df_miss, meth = "sample", m = 1, print = FALSE))
+  clust_old <- setNames(as.matrix(M_old[, 1]), 1:rows)
+  iter <-1 
+
+  while(iter < nIter){
+    # Step 1: Update cluster assignment
+    dist <-   as.matrix(daisy(M_old, metric = "gower")) #dist(W_old, method = "euclidean")
+    clust_new <- clust_old
+    neighbors <- get.neighbors(as.matrix(dist), kNN)
+    
+    for(i in index_miss_clust){
+      if(i != 0){
+        best_neighbors <- neighbors[i,]
+        clust_val <- clust_old[i]
+        has_neigh <- has.x.as.neighbor(i, neighbors)
+        best_clust <- my_mode(c(clust_old[best_neighbors]))#, clust_old[has_neigh] #my_mode(c(clust_old[best_neighbors], clust_old[clust_neighbors]))
+        clust_new[i] <- best_clust
+      }
+    }
+    clust_old <- clust_new
+    
+    # Step 2: Update imputations
+    # Variable d,  observation i
+    M_old[, 1] <- as.factor(clust_old)
+    M_new <- M_old
+    for(d in 2:vars){
+      for(i in index_miss_vars[,d]){
+        if(i != 0){
+          clust_val <- as.character(M_new[i, 1])
+          sum_kNN <- sum(M_new[neighbors[i,], d])
+          has_neigh <- has.x.as.neighbor(i, neighbors)
+          sum_neigh <- sum(M_new[has_neigh, d])
+          m_knn <- (sum_kNN + sum_neigh)/(kNN + length(has_neigh))
+          m_cluster <- mean(M_new[as.numeric(names(clust_old[clust_old==clust_val])), d])
+          M_new[i,d] <- alpha*m_knn + (1-alpha)*m_cluster 
+        }
+      }
+    }
+    M_old <- M_new
+    iter <- iter + 1 
+    # rmse <- get.RMSE(df_obs, M_old, index_miss)
+    # print(rmse)
+  }
+  
+  M_old
+}
+
+
+
+
+impute.multilevel.num.calibrate <- function(df_miss, pattern_val, nIter, alpha, kNN){
+  
+  vars <- ncol(df_miss)
+  rows <- nrow(df_miss)
+  
+  neighbors <- matrix(nrow = rows, ncol = kNN)
+  index_miss_clust <- pattern_val[, 1]
+  index_miss_vars <- pattern_val
+
+  M_old <- complete(mice(df_miss, meth = "sample", m = 1, print = FALSE))
+  clust_old <- setNames(as.matrix(M_old[, 1]), 1:rows)
+  iter <-1 
+
+  while(iter < nIter){
+  
+    # Step 1: Update cluster assignment
+    dist <-   as.matrix(daisy(M_old, metric = "gower")) #dist(W_old, method = "euclidean")
+    clust_new <- clust_old
+    neighbors <- get.neighbors(as.matrix(dist), kNN)
+    
+    for(i in index_miss_clust){
+      if(i != 0){
+        best_neighbors <- neighbors[i,]
+        clust_val <- clust_old[i]
+        has_neigh <- has.x.as.neighbor(i, neighbors)
+        best_clust <- my_mode(c(clust_old[best_neighbors], clust_old[has_neigh]))#my_mode(c(clust_old[best_neighbors], clust_old[clust_neighbors]))
+        clust_new[i] <- best_clust
+      }
+    }
+    clust_old <- clust_new
+    
+    # Step 2: Update imputations
+    # Variable d,  observation i
+    M_old[, 1] <- as.factor(clust_old)
+    M_new <- M_old
+    for(d in 2:vars){
+      for(i in index_miss_vars[,d]){
+        if(i != 0){
+          clust_val <- as.character(M_new[i, 1])
+          sum_kNN <- sum(M_new[neighbors[i,], d])
+          has_neigh <- has.x.as.neighbor(i, neighbors)
+          sum_neigh <- sum(M_new[has_neigh, d])
+          m_knn <- (sum_kNN + sum_neigh)/(kNN + length(has_neigh))
+          m_cluster <- mean(M_new[as.numeric(names(clust_old[clust_old==clust_val])), d])
+          M_new[i,d] <- alpha*m_knn + (1-alpha)*m_cluster 
+        }
+      }
+    }
+    M_old <- M_new
+    iter <- iter + 1 
+  }
+  
+  M_old
+}
+
+
+
+
+impute.multilevel.calibrate <- function(df_miss, clust_var, pattern_val, nIter, alpha, kNN, delta0 ){
+  W <- df_miss %>% select(-clust_var) %>% select_if(is.numeric)
+  V <- df_miss %>% select(-clust_var) %>% select_if(~!is.numeric(.x))
+  
+  vars_W <- ncol(W)
+  vars_V <- ncol(V)
+  rows <- nrow(df_miss)
+  
+  neighbors <- matrix(nrow = rows, ncol = kNN)
+  index_miss_clust <- pattern_val[, 1]
+  
+  initial_random <- complete(mice(df_miss, meth = "sample", m = 1, print = FALSE))
+  
+  clust_old <- as.matrix(initial_random %>% select(clust_var))
+  clust_old <- setNames(clust_old, 1:rows)
+  # warm start
+  W_old <- initial_random %>% select(-clust_var)
+  index_miss_vars_W <- pattern_val[, c(2:ncol(pattern_val))]
+  if(vars_V>0){ 
+    V_old <- complete(mice(V, meth = "sample", m = 1, print = FALSE)) 
+    index_miss_vars_V <- get.index.miss(V)
+  }
+  
+  iter <-1 
+  delta <- 100000
+  cost_old <- 0
+  cost_new <- 0
+  while(iter < nIter){
+    
+    # Step 1: Update cluster assignment
+    dist <- as.matrix(dist(W_old, method = "euclidean"))
+    clust_new <- clust_old
+    neighbors <- get.neighbors(dist, kNN)
+    for(i in index_miss_clust){
+      if(i != 0){
+        best_neighbors <- neighbors[i,]
+        w_clust <- clust_old[i]
+        has_neigh <- has.x.as.neighbor(i, neighbors)
+        clust_neighbors <- as.numeric(names(clust_old[clust_old==w_clust]))
+        best_clust <- my_mode(c(clust_old[best_neighbors], clust_old[has_neigh]))#my_mode(c(clust_old[best_neighbors], clust_old[clust_neighbors]))
+        clust_new[i] <- best_clust
+      }
+    }
+    clust_old <- clust_new
+    #print(clust_old)
+    # Step 2: Update imputations
+    # Variable d,  observation i
+    W_new <- W_old
+    for(d in 1:(vars_W)){
+      for(i in index_miss_vars_W[,d]){
+        if(i != 0){
+          w_clust <- clust_old[i]
+          W_old_i <- W_old[-c(i),]
+          sum_kNN <- sum(W_old[neighbors[i,], d])
+          has_neigh <- has.x.as.neighbor(i, neighbors)
+          sum_neigh <- sum(W_old[has_neigh, d])
+          w_knn <- (sum_kNN + sum_neigh)/(kNN + length(has_neigh))
+          w_cluster <- mean(W_old[as.numeric(names(clust_old[clust_old==w_clust])), d])
+          W_new[i,d] <- alpha*w_knn + (1-alpha)*w_cluster 
+          
+        }
+      }
+    }
+    W_old <- W_new
+    iter <- iter + 1 
+    
+  }
+  cbind(clust_old, W_old)
+}
+
+
+
+
+get.cost <- function(W, w_clust, neighbors, index_miss_vars, alpha){
+  
+  cost_knn <- 0
+  cost_clust <- 0
+  for(d in 1:(ncol(W))){
+    for(i in index_miss_vars[,d]){
+      if(i != 0){
+        for(j in neighbors[i,]){
+          cost_knn <- cost_knn + (W[i,d] - W[j, d])^2
+        }
+        
+        # for(j in w_clust[i]){
+        #   cost_clust <- cost_clust + (W[i,d] - W[j, d])^2
+        # }
+      }
+    }
+  }
+  cost <- alpha*cost_knn + (1-alpha)*cost_clust
+  cost
+}
+
+
+
+my_mode <- function(x) {                     # Create mode function 
+    x<-x[!is.na(x)]
+    unique_x <- unique(x)
+    tabulate_x <- tabulate(match(x, unique_x))
+    best <- unique_x[tabulate_x == max(tabulate_x)]
+    if(length(best) > 1){
+      best <- best[1]
+    }
+    best
+}
+
+mode_weighted <- function(x, y, alpha){
+  x <- as.character(x)
+  y <- as.character(y)
+  cat <- unique(c(unique(x), unique(y)))
+  unique_all <- as.data.frame(cat)
+  result <- cbind(unique_all, freq = 0)
+  result$cat <- as.character(cat)
+  for(i in unique_all[ , 1]){
+    for(t in x){
+      if(i == t){
+        result[match(t, result$cat), 2] <- result[match(t, result$cat), 2] + alpha
+      }
+    } 
+    for(t in y){
+      if(i == t){
+        result[match(t, result$cat), 2] <- result[match(t, result$cat), 2]  + (1 - alpha)
+      }
+    } 
+  }
+  
+  best <- result[match(max(result$freq), result$freq), 1]
+  best
+  
+}
+
+get.neighbors <- function(dist.matrix, kNN){
+  n <- nrow(dist.matrix)
+  neigh <- matrix(nrow = n, ncol = kNN)
+  for(i in 1:n){
+    d <- sort(dist.matrix[i,]) 
+    neigh[i,] <- as.numeric(names(d[2:(kNN+1)]))
+  }
+  neigh
+}
+
+
+normalize <- function(df_miss){
+  col <- ncol(df_miss)
+  for(i in 2:col){
+    if(is.numeric(df_miss[,i])){
+      df_miss[,i] <- (df_miss[ ,i] - mean(df_miss[ ,i], na.rm = T))/sd(df_miss[ ,i], na.rm = T)
+    }
+  }
+  df_miss
+}
+
+has.x.as.neighbor <- function(i, neighbors){
+  vec <- c()
+  n <- nrow(neighbors)
+  for(j in 1:n){
+    if(i %in% neighbors[j,]){
+        vec <- c(vec, j)
+    }
+  }
+  vec
+} 
+
+get.index.miss <- function(W){
+  index_miss_vars_W <- matrix(NA, ncol = ncol(W), nrow = nrow(W))
+  for(i in 1:ncol(W)){
+    index_miss_vars_W[,i] <- 1:nrow(W)*is.na(W[,i])
+  }
+  index_miss_vars_W
+}
+
+
+
+get.Accuracy <- function(x, y, indx){
+  sum <- 0
+  vars_cat <-0
+  V <- x %>% select_if(~!is.numeric(.x))
+  n <- ncol(x)
+  nvar <- ncol(V) - 1 # dont count first 
+  #Categorical, i.e. cluster (first column)
+  for(d in (n-nvar+1):n){
+    for(i in indx[, d]){
+      if(i != 0){
+        sum <- sum + ifelse(x[i, d] == y[i, d], 1, 0)
+        vars_cat <- vars_cat + 1
+      }
+    }
+  }
+  
+  
+  Acc <- sum/vars_cat
+  Acc
+}
+
+
+get.Accuracy.clust <- function(x, y, indx){
+  sum <- 0
+  vars_cat <-0
+  V <- x[,1]
+
+  for(i in indx[, 1]){
+    if(i != 0){
+      sum <- sum + ifelse(x[i, 1] == y[i, 1], 1, 0)
+      vars_cat <- vars_cat + 1
+    }
+  }
+  
+  Acc <- sum/vars_cat
+  Acc
+}
+
+
+
+
+get.MAE <- function(x, y, indx){
+  MAE_num <-0
+  vars_num <- 0
+    nvar <- ncol(x) 
+     # First column is the only categorical so far
+
+  for(d in 2:(nvar)){   # starts from second 
+    for(i in indx[,d]){
+      if(i != 0){
+        MAE_num <- MAE_num + abs(x[i,d] - y[i,d])
+        vars_num <- vars_num + 1
+      }
+    }
+  }
+  
+  MAE <- MAE_num/vars_num #+ MAE_cat/vars_cat
+  MAE
+}
+
+get.RMSE <- function(x, y, indx){
+  RMSE_num <- 0
+  vars_num <- 0
+  nvar <- ncol(x) 
+  
+  for(d in 2:(nvar)){
+    for(i in indx[,d]){
+      if(i != 0){
+        RMSE_num <- RMSE_num + (x[i,d] - y[i,d])^2
+        vars_num <- vars_num + 1
+      }
+    }
+  }
+
+  RMSE <- sqrt(RMSE_num/vars_num) #+ RMSE_cat/vars_cat)
+  RMSE
+}
+
+
+
+create.data <- function(nCluster, sizeCluster, beta0, tau0, beta, tau, sigma2){
+  clust <- gl(nClusters, k = sizeCluster) 
+  
+  beta0_j <- rep(rnorm(nClusters, beta0, tau0), each = sizeCluster)
+  beta1_j <- rep(rnorm(nClusters, beta[1], tau[1]), each = sizeCluster)
+  # beta2_j <- rep(rnorm(nClusters, beta[2], tau[2]), each = sizeCluster)
+  # beta3_j <- rep(rnorm(nClusters, beta[3], tau[3]), each = sizeCluster)
+  # beta4_j <- rep(rnorm(nClusters, beta[4], tau[4]), each = sizeCluster)
+  
+  X1 <- rnorm(nClusters * sizeCluster)
+  # X2 <- rnorm(nClusters * sizeCluster)
+  # X3 <- rnorm(nClusters * sizeCluster)
+  # X4 <- rnorm(nClusters * sizeCluster)
+  
+  error <- rnorm(nClusters * sizeCluster, mean = 0, sd = sigma2)
+  
+  y <- beta0_j + beta1_j*X1 + error # beta2_j*X2 + beta3_j*X3 + beta4_j*X4
+  
+  df <- data.frame(clust, y,X1) #  X2, X3, X4,
+  df
+}
+
+
+create.data.multivar <- function(p, nCluster, sizeCluster, beta0, tau0, beta, tau, sigma2){
+  
+  clust <- gl(nClusters, k = sizeCluster) 
+  n <- nClusters * sizeCluster
+  beta0_j <- rep(rnorm(nClusters, beta0, tau0), each = sizeCluster)
+  
+  betas <- matrix(nrow = n, ncol = p)
+  
+  for(i in 1:p){
+    betas[ , i] <- rep(rnorm(nClusters, beta[i], tau[i]), each = sizeCluster)
+  }
+  
+  Xs <- matrix(nrow = n, ncol = p)
+  
+  for(i in 1:p){
+    Xs[ , i] <- rnorm(n)
+  }
+  
+  error <- rnorm(n, mean = 0, sd = sigma2)
+  
+  y <- beta0_j + error 
+  for(j in 1:p){
+    y <- y + betas[ ,j]*Xs[ ,j]
+  }
+  
+  df <- data.frame(clust, y, Xs) 
+  df
+}
+
+
+
+create.unbalanced.data <- function(nCluster, SD, beta0, tau0, beta, tau, sigma2) {
+  
+  sizeCluster <- as.integer(rnorm(nClusters, mean = 25, sd = SD))
+  sizeCluster[sizeCluster<=5] <- 5
+  clust <- c()
+  beta0_j <- c()
+  beta1_j <- c()
+  i <- 1
+  for(k in sizeCluster){
+    clust <- c(clust, rep(i, k))
+    beta0_j <- c(beta0_j, rep(rnorm(1, beta0, tau0), k))
+    beta1_j <- c(beta1_j, rep(rnorm(1, beta[1], tau[1]), k))
+    i <- i + 1
+  }
+  
+  X1 <- rnorm(sum(sizeCluster))
+ 
+  error <- rnorm(sum(sizeCluster), mean = 0, sd = sigma2)
+  
+  y <- beta0_j + beta1_j*X1 + error 
+  
+  df <- data.frame(clust, y,X1) %>% mutate(clust = as.factor(clust))
+  df
+  
+} 
+
+
+create.logistic.data <-  function(nCluster, sizeCluster, beta0, tau0, beta, tau, sigma2) {
+  
+  clust <- gl(nClusters, k = sizeCluster) 
+  
+  beta0_j <- rep(rnorm(nClusters, beta0, tau0), each = sizeCluster)
+  beta1_j <- rep(rnorm(nClusters, beta[1], tau[1]), each = sizeCluster)
+  
+  X1 <- rnorm(nClusters * sizeCluster)
+
+  error <- rnorm(nClusters * sizeCluster, mean = 0, sd = sigma2)
+  
+  eta <- beta0_j + beta1_j*X1 + error
+  
+  #p <- exp(eta) / (1 + exp(eta))
+  #y <- ifelse(p< 0.5, 0, 1)
+  
+  p = 1 / (1 + exp(-eta))
+  y = rbinom(n = nClusters * sizeCluster, size = 1, prob = p)
+  
+  data.frame(clust, X1, y) %>% mutate(y = as.factor(y))
+  
+}
+
+
+```
+

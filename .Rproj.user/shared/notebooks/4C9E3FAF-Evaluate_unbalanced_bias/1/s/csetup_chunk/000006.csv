@@ -1,0 +1,4 @@
+"0","x <- biokNN.impute(df_miss, 'clust')
+"
+"2","Error in biokNN.impute(df_miss, ""clust"") : object 'col_types' not found
+"
