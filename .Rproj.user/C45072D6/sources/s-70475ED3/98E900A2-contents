@@ -18,15 +18,15 @@ create.multilevel <- function(nClass = 10, nVars = 1, classMean = 10, classSD = 
 
   sizeCluster <- as.integer(rnorm(nClass, mean = classMean, sd = classSD))
   sizeCluster[sizeCluster<=5] <- 5
-  clust <- c()
+  class <- c()
   beta0_j <- c()
   n <- sum(sizeCluster)
-  X.df <- matrix(nrow = n, ncol = nVars)
+  X <- matrix(nrow = n, ncol = nVars)
 
 
   i <- 1
   for(k in sizeCluster){
-    clust <- c(clust, rep(i, k))
+    class <- c(class, rep(i, k))
     beta0_j <- c(beta0_j, rep(rnorm(1, beta0, tau0), k))
     i <- i + 1
   }
@@ -39,13 +39,13 @@ create.multilevel <- function(nClass = 10, nVars = 1, classMean = 10, classSD = 
     for(k in sizeCluster){
       beta_j <- c(beta_j, rep(rnorm(1, beta[j], tau[j]), k))
     }
-    X <- rnorm(n)
-    X.df[ ,j] <- X
+    x <- rnorm(n)
+    X[ ,j] <- x
     y <- y + beta_j*X
 
   }
 
-  df <- data.frame(clust, y, X.df) %>% mutate(clust = as.factor(clust))
+  df <- data.frame(class, y, X) %>% mutate(class = as.factor(class))
   df
 
 }

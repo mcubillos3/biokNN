@@ -7,14 +7,14 @@
 #' @param className name of the variable containing classes
 #' @return A barplot with the number of missing values by class, by variable
 #' @export
-plot.missing <- function(df, className){
+plot.missing <- function(df, class){
 
-  missClust <- df %>% dplyr::group_by(className) %>%
+  missClust <- df %>% dplyr::group_by(class) %>%
     dplyr::summarise_if(is.numeric, ~sum(is.na(.x))) %>%
-    tidyr::gather(var, value, -className)
+    tidyr::gather(var, value, -class)
 
   g <- ggplot2::ggplot(missClust) +
-    geom_bar(aes(x = className, y = value), stat="identity") +
+    geom_bar(aes(x = class, y = value), stat="identity") +
     facet_wrap(~var)+
     labs(x = "Class", y ="Number of missing values") +
     theme_bw()
