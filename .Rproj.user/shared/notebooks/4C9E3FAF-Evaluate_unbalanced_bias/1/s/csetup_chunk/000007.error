@@ -1,1 +1,0 @@
-{"frames":[{"character_number":0,"end_character_number":0,"end_line_number":0,"file":"","func":"biokNN.impute(df_miss, \"clust\")","line_number":0}],"message":"Error in biokNN.impute(df_miss, \"clust\") : object 'col_types' not found\n"}
