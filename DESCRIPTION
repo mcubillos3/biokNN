@@ -1,11 +1,21 @@
 Package: biokNN
 Type: Package
-Title: Bi-objective kNN imputation for multilevel data
-Version: 0.1.0
-Author: Maximiliano Cubillos
+Title: Bi-Objective k-Nearest Neighbors Imputation for Multilevel Data
+Version: 0.1.1
+Depends: R (>= 2.10)
+Authors@R: c(person("Maximiliano Cubillos", 
+                      role = c("aut", "cre"),
+                      email = "mcub@econ.au.dk",
+                      comment = c(ORCID = "0000-0002-2826-9728")))
 Maintainer: Maximiliano Cubillos <mcub@econ.au.dk>
-Description: Imputation of numerical datasets with a multilevel structure
-License: 
+Description: The bi-objective k-nearest neighbors method (biokNN) is an imputation method designed to estimate missing values on data with a multilevel structure. The original algorithm is an extension of the k-nearest neighbors method proposed by Bertsimas et al. (2017) (<https://jmlr.org/papers/v18/17-073.html>) using a bi-objective approach.  A brief description of the method can be found in Cubillos (2021) (<https://pure.au.dk/portal/files/214627979/biokNN.pdf>). The 'biokNN' package provides an R implementation of the method for datasets with continuous variables (e.g. employee productivity, student grades) and a categorical class variable (e.g. department, school). Given an incomplete dataset with such structure, this package produces complete datasets using both single and multiple imputation, including visualization tools to better understand the pattern of the missing values. 
+License: GPL (>= 2)
+URL: https://github.com/mcubillos3/biokNN
+BugReports: https://github.com/mcubillos3/biokNN/issues
+Suggests: 
+  knitr, 
+  rmarkdown, 
+  testthat
 Encoding: UTF-8
 LazyData: true
 Imports:
@@ -16,5 +26,7 @@ Imports:
   magrittr,
   ggplot2,
   tidyr,
-  desc
+  desc,
+  lme4,
+  mitml
 RoxygenNote: 7.1.1
