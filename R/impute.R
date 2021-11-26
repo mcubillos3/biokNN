@@ -320,12 +320,13 @@ make.missing <- function(data, pattern){
 
 
 #' @importFrom stats rbinom
-make.pattern <- function(data, p = 0.1){
-  vars <- ncol(data) - 1
-  prop <- p/vars
-  pattern <- rep(0, nrow(data))
-  for(i in 1:vars){
-    pattern <- cbind(pattern, rbinom(nrow(data), 1, prop))
+make.pattern <- function(data, varNames, p = 0.1){
+  prop <- p/length(varNames)
+  pattern <- as.data.frame(rep(0, nrow(data), ncol(data)))
+  colnames(pattern) <- colnames(data)
+
+  for(var in varNames){
+    pattern[ , var] <- rbinom(nrow(data), 1, prop)
   }
   pattern
 }
