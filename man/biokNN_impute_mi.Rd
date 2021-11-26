@@ -7,6 +7,7 @@
 biokNN_impute_mi(
   data,
   className,
+  varNames,
   m = 5,
   nIter = 10,
   alpha = 0.5,
@@ -18,6 +19,8 @@ biokNN_impute_mi(
 \item{data}{A dataframe with missing values}
 
 \item{className}{name of the variable that contains the classes}
+
+\item{varNames}{vector with the names of the variables to be imputed}
 
 \item{m}{number of imputations}
 
@@ -41,6 +44,7 @@ of the variables are numerical.
 data(data_example)
 complete_data_mi <- biokNN_impute_mi(data.example,
                className = "class",
+               varNames = c("y"),
                m = 3,
                nIter = 10,
                alpha = 0.9,

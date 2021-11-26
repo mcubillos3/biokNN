@@ -7,6 +7,7 @@
 calibrate(
   data,
   className,
+  varNames,
   prop_valid = 0.1,
   nIter = 10,
   distance = "gower",
@@ -19,6 +20,8 @@ calibrate(
 \item{data}{A dataframe with missing values}
 
 \item{className}{name of the variable that contains the classes}
+
+\item{varNames}{vector with the names of the variables to be imputed}
 
 \item{prop_valid}{proportion of missing values}
 
@@ -42,7 +45,8 @@ where the first value is the weighting parameter and the second the number of ne
 \examples{
 data(data_example)
 calibrate(data_example,
-          "class",
+          className = "class",
+          varNames = c("y"),
           prop_valid = 0.3,
           alpha_space = c(0.5, 0.7, 0.9),
           k_space = c(10, 15),

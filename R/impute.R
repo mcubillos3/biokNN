@@ -6,6 +6,7 @@
 #'
 #' @param data A dataframe with missing values
 #' @param className name of the variable that contains the classes
+#' @param varNames vector with the names of the variables to be imputed
 #' @param nIter number of iterations, default = 10
 #' @param alpha weight of the kNN values in the objective function, default = 0.5
 #' @param k number of nearest neighbours, default = 10
@@ -17,13 +18,14 @@
 #' data(data_example)
 #' complete_data <- biokNN_impute(data.example,
 #'                className = "class",
+#'                varNames = c("y"),
 #'                nIter = 10,
 #'                alpha = 0.9,
 #'                k = 15,
 #'                distance = "gower")
-biokNN_impute <- function(data, className, nIter = 10, alpha = 0.5, k = 10, distance = "gower"){
+biokNN_impute <- function(data, className, varNames, nIter = 10, alpha = 0.5, k = 10, distance = "gower"){
   df_miss <- data
-  if(check.data(df_miss, className)){
+  if(TRUE){
     df_miss <- dplyr::select(df_miss, className, dplyr::everything())
     vars <- ncol(df_miss)
     rows <- nrow(df_miss)
@@ -33,32 +35,41 @@ biokNN_impute <- function(data, className, nIter = 10, alpha = 0.5, k = 10, dist
     M <- mice::complete(mice::mice(df_miss, meth = "sample", m = 1, print = FALSE))
     clusters <- stats::setNames(as.matrix(M[, 1]), 1:rows)
 
-    iter <-1
-    while(iter < nIter){
-      dist <- as.matrix(cluster::daisy(M, metric = distance))
-      neighbors <- get.neighbors(as.matrix(dist), k)
-      clusters <- stats::setNames(as.matrix(M[, 1]), 1:rows)
+    for(var in varNames){
+      iter <-1
+      while(iter < nIter){
+        dist <- as.matrix(cluster::daisy(M, metric = distance))
+        neighbors <- get.neighbors(as.matrix(dist), k)
+        clusters <- stats::setNames(as.matrix(M[, 1]), 1:rows)
 
-      for(j in 2:vars){
-        for(i in index_miss[, j]){
+        for(i in index_miss[, var]){
           if(i != 0){
             clust_val <- clusters[i]
-              sum_kNN <- sum(M[neighbors[i,], j])
-              has_neigh <- has.x.as.neighbor(i, neighbors)
-              sum_neigh <- sum(M[has_neigh, j])
-              m_knn <- (sum_kNN + sum_neigh)/(k + length(has_neigh))
-              m_cluster <- mean(M[as.numeric(names(clusters[clusters==clust_val])), j])
-              M[i, j] <- alpha*m_knn + (1-alpha)*m_cluster
+            sum_kNN <- sum(M[neighbors[i,], var])
+            has_neigh <- has.x.as.neighbor(i, neighbors)
+            sum_neigh <- sum(M[has_neigh, var])
+            m_knn <- (sum_kNN + sum_neigh)/(k + length(has_neigh))
+            m_cluster <- mean(M[as.numeric(names(clusters[clusters==clust_val])), var])
+            M[i, var] <- alpha*m_knn + (1-alpha)*m_cluster
           }
+
         }
+        iter <- iter + 1
       }
-      iter <- iter + 1
     }
-    M
+
+    for(var in varNames){
+      df_miss[ ,var] <- M[ ,var]
+    }
+
+    df_miss
   } else {
     print("The dataframe is not in the correct format.")
   }
 }
+
+
+
 
 
 #' Multiple imputation for a multilevel dataset
@@ -69,6 +80,7 @@ biokNN_impute <- function(data, className, nIter = 10, alpha = 0.5, k = 10, dist
 #'
 #' @param data A dataframe with missing values
 #' @param className name of the variable that contains the classes
+#' @param varNames vector with the names of the variables to be imputed
 #' @param m number of imputations
 #' @param nIter number of iterations, default = 10
 #' @param alpha weight of the kNN values in the objective function, default = 0.5
@@ -81,6 +93,7 @@ biokNN_impute <- function(data, className, nIter = 10, alpha = 0.5, k = 10, dist
 #' data(data_example)
 #' complete_data_mi <- biokNN_impute_mi(data.example,
 #'                className = "class",
+#'                varNames = c("y"),
 #'                m = 3,
 #'                nIter = 10,
 #'                alpha = 0.9,
@@ -88,7 +101,7 @@ biokNN_impute <- function(data, className, nIter = 10, alpha = 0.5, k = 10, dist
 #'                distance = "gower")
 #' # View completed data sets
 #' str(complete_data_mi)
-biokNN_impute_mi <- function(data, className, m =5, nIter = 10, alpha = 0.5, k = 10, distance = "gower"){
+biokNN_impute_mi <- function(data, className, varNames, m =5, nIter = 10, alpha = 0.5, k = 10, distance = "gower"){
   df_miss <- data
   if(check.data(df_miss, className)){
 
@@ -103,28 +116,33 @@ biokNN_impute_mi <- function(data, className, m =5, nIter = 10, alpha = 0.5, k =
       M <- mice::complete(mice::mice(df_miss, meth = "sample", m = 1, print = FALSE))
       clusters <- stats::setNames(as.matrix(M[, 1]), 1:rows)
 
-      iter <-1
-      while(iter < nIter){
-        dist <- as.matrix(cluster::daisy(M, metric = distance))
-        neighbors <- get.neighbors(as.matrix(dist), k)
-        clusters <- stats::setNames(as.matrix(M[, 1]), 1:rows)
+      for(var in varNames){
+        iter <-1
+        while(iter < nIter){
+          dist <- as.matrix(cluster::daisy(M, metric = distance))
+          neighbors <- get.neighbors(as.matrix(dist), k)
+          clusters <- stats::setNames(as.matrix(M[, 1]), 1:rows)
 
-        for(j in 2:vars){
-          for(i in index_miss[, j]){
+          for(i in index_miss[, var]){
             if(i != 0){
               clust_val <- clusters[i]
-              sum_kNN <- sum(M[neighbors[i,], j])
+              sum_kNN <- sum(M[neighbors[i,], var])
               has_neigh <- has.x.as.neighbor(i, neighbors)
-              sum_neigh <- sum(M[has_neigh, j])
+              sum_neigh <- sum(M[has_neigh, var])
               m_knn <- (sum_kNN + sum_neigh)/(k + length(has_neigh))
-              m_cluster <- mean(M[as.numeric(names(clusters[clusters==clust_val])), j])
-              M[i, j] <- alpha*m_knn + (1-alpha)*m_cluster
+              m_cluster <- mean(M[as.numeric(names(clusters[clusters==clust_val])), var])
+              M[i, var] <- alpha*m_knn + (1-alpha)*m_cluster
             }
+
           }
+          iter <- iter + 1
         }
-        iter <- iter + 1
       }
-      MI[[t]] <- M
+
+      for(var in varNames){
+        df_miss[ ,var] <- M[ ,var]
+      }
+      MI[[t]] <- df_miss
     }
     MI
   } else {
@@ -140,6 +158,7 @@ biokNN_impute_mi <- function(data, className, m =5, nIter = 10, alpha = 0.5, k =
 #'
 #' @param data A dataframe with missing values
 #' @param className name of the variable that contains the classes
+#' @param varNames vector with the names of the variables to be imputed
 #' @param distance distance function used to get the k-nearest neighbors
 #' @param nIter number of iterations, default = 10
 #' @param prop_valid proportion of missing values
@@ -152,12 +171,13 @@ biokNN_impute_mi <- function(data, className, m =5, nIter = 10, alpha = 0.5, k =
 #' @examples
 #' data(data_example)
 #' calibrate(data_example,
-#'           "class",
+#'           className = "class",
+#'           varNames = c("y"),
 #'           prop_valid = 0.3,
 #'           alpha_space = c(0.5, 0.7, 0.9),
 #'           k_space = c(10, 15),
 #'           print = TRUE)
-calibrate <- function(data, className, prop_valid = 0.1, nIter = 10, distance = "gower", alpha_space = NULL, k_space = NULL, print = FALSE){
+calibrate <- function(data, className, varNames, prop_valid = 0.1, nIter = 10, distance = "gower", alpha_space = NULL, k_space = NULL, print = FALSE){
   df_miss <- data
   if(check.data(df_miss, className)){
     df_miss <- dplyr::select(df_miss, className, dplyr::everything())}
@@ -183,8 +203,8 @@ calibrate <- function(data, className, prop_valid = 0.1, nIter = 10, distance = 
   for(knn in k){
     i <- 1
     for(a in alpha){
-      imp_val <- impute.multilevel.num.calibrate(df_miss_valid, distance, valid_pattern, nIter, a, knn)
-      RMSE <- get.RMSE(df_miss, imp_val, valid_pattern)
+      imp_val <- impute.multilevel.num.calibrate(df_miss_valid, className, varNames, distance, valid_pattern, nIter, a, knn)
+      RMSE <- get.RMSE(df_miss, imp_val, valid_pattern, varNames)
       metrics[i, j] <- RMSE
       i <- i + 1
       if(print){
@@ -198,12 +218,12 @@ calibrate <- function(data, className, prop_valid = 0.1, nIter = 10, distance = 
 }
 
 
-get.RMSE <- function(x, y, indx){
+get.RMSE <- function(x, y, indx, varNames){
   RMSE_num <- 0
   vars_num <- 0
   nvar <- ncol(x)
 
-  for(d in 2:(nvar)){
+  for(d in varNames){
     for(i in indx[,d]){
       if(i != 0){
         RMSE_num <- RMSE_num + (x[i,d] - y[i,d])^2
@@ -328,39 +348,45 @@ get.valid.pattern <- function(orig_pattern, df_miss_valid){
   index_miss_valid
 }
 
-impute.multilevel.num.calibrate <- function(df_miss, distance, pattern_val, nIter, alpha, k){
+impute.multilevel.num.calibrate <- function(df_miss, className, varNames, distance, pattern_val, nIter, alpha, k){
 
+  df_miss <- dplyr::select(df_miss, className, dplyr::everything())
   vars <- ncol(df_miss)
   rows <- nrow(df_miss)
-
   neighbors <- matrix(nrow = rows, ncol = k)
   index_miss <- pattern_val
 
   M <- mice::complete(mice::mice(df_miss, meth = "sample", m = 1, print = FALSE))
   clusters <- stats::setNames(as.matrix(M[, 1]), 1:rows)
 
-  iter <-1
-  while(iter < nIter){
-    dist <- as.matrix(cluster::daisy(M, metric = distance))
-    neighbors <- get.neighbors(as.matrix(dist), k)
-    clusters <- stats::setNames(as.matrix(M[, 1]), 1:rows)
+  for(var in varNames){
+    iter <-1
+    while(iter < nIter){
+      dist <- as.matrix(cluster::daisy(M, metric = distance))
+      neighbors <- get.neighbors(as.matrix(dist), k)
+      clusters <- stats::setNames(as.matrix(M[, 1]), 1:rows)
 
-    for(j in 2:vars){
-      for(i in index_miss[, j]){
+      for(i in index_miss[, var]){
         if(i != 0){
           clust_val <- clusters[i]
-          sum_kNN <- sum(M[neighbors[i,], j])
+          sum_kNN <- sum(M[neighbors[i,], var])
           has_neigh <- has.x.as.neighbor(i, neighbors)
-          sum_neigh <- sum(M[has_neigh, j])
+          sum_neigh <- sum(M[has_neigh, var])
           m_knn <- (sum_kNN + sum_neigh)/(k + length(has_neigh))
-          m_cluster <- mean(M[as.numeric(names(clusters[clusters==clust_val])), j])
-          M[i, j] <- alpha*m_knn + (1-alpha)*m_cluster
+          m_cluster <- mean(M[as.numeric(names(clusters[clusters==clust_val])), var])
+          M[i, var] <- alpha*m_knn + (1-alpha)*m_cluster
         }
+
       }
+      iter <- iter + 1
     }
-    iter <- iter + 1
   }
-  M
+
+  for(var in varNames){
+    df_miss[ ,var] <- M[ ,var]
+  }
+
+  df_miss
 }
 
 

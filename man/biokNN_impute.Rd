@@ -7,6 +7,7 @@
 biokNN_impute(
   data,
   className,
+  varNames,
   nIter = 10,
   alpha = 0.5,
   k = 10,
@@ -17,6 +18,8 @@ biokNN_impute(
 \item{data}{A dataframe with missing values}
 
 \item{className}{name of the variable that contains the classes}
+
+\item{varNames}{vector with the names of the variables to be imputed}
 
 \item{nIter}{number of iterations, default = 10}
 
@@ -38,6 +41,7 @@ of the variables are numerical.
 data(data_example)
 complete_data <- biokNN_impute(data.example,
                className = "class",
+               varNames = c("y"),
                nIter = 10,
                alpha = 0.9,
                k = 15,
