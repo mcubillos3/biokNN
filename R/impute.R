@@ -303,7 +303,10 @@ get.index.miss <- function(W){
   for(i in 1:ncol(W)){
     index_miss_vars_W[,i] <- 1:nrow(W)*is.na(W[,i])
   }
-  index_miss_vars_W
+  M <- as.data.frame(index_miss_vars_W)
+  colnames(M) <- colnames(W)
+  M
+
 }
 
 
@@ -345,7 +348,9 @@ get.valid.pattern <- function(orig_pattern, df_miss_valid){
       }
     }
   }
-  index_miss_valid
+  M <- as.data.frame(index_miss_valid)
+  colnames(M) <- colnames(df_miss_valid)
+  M
 }
 
 impute.multilevel.num.calibrate <- function(df_miss, className, varNames, distance, pattern_val, nIter, alpha, k){
