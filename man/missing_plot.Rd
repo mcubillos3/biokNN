@@ -4,12 +4,14 @@
 \alias{missing_plot}
 \title{Plot number of missing values by class}
 \usage{
-missing_plot(df, class)
+missing_plot(df, className, varNames)
 }
 \arguments{
 \item{df}{dataframe with missing values}
 
-\item{class}{name of the variable containing classes}
+\item{className}{name of the variable containing classes}
+
+\item{varNames}{vector with the name of the variables to be imputed}
 }
 \value{
 A barplot with the number of missing values by class, by variable
@@ -20,5 +22,5 @@ intercepts/varying slopes linear regression with a single target variable y.
 }
 \examples{
 data(data_example)
-missing_plot(data_example, "class")
+missing_plot(data_example, "class", c("y"))
 }

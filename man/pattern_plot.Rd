@@ -4,12 +4,14 @@
 \alias{pattern_plot}
 \title{Plot pattern of missing values by class}
 \usage{
-pattern_plot(df, class)
+pattern_plot(df, className, varNames)
 }
 \arguments{
 \item{df}{dataframe with missing values}
 
-\item{class}{name of the variable containing classes}
+\item{className}{name of the variable containing classes}
+
+\item{varNames}{vector with the name of the variables to be imputed}
 }
 \value{
 A plot with the patter of missing values by class, by variable

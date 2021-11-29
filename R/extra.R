@@ -5,16 +5,22 @@
 #' @importFrom magrittr %>%
 #' @importFrom ggplot2 ggplot aes geom_bar coord_flip facet_wrap labs theme_bw
 #' @param df dataframe with missing values
-#' @param class name of the variable containing classes
+#' @param className name of the variable containing classes
+#' @param varNames vector with the name of the variables to be imputed
 #' @return A barplot with the number of missing values by class, by variable
 #' @export
 #'
 #' @examples
 #' data(data_example)
-#' missing_plot(data_example, "class")
-missing_plot <- function(df, class){
+#' missing_plot(data_example, "class", c("y"))
+missing_plot <- function(df, className, varNames){
 
-  missClust <- df %>% dplyr::group_by(class) %>%
+  variables <- c(className, varNames)
+  colnames(df)[which(names(df) == className)] <- "class"
+
+  missClust <- df %>%
+    dplyr::select(one_of(variables)) %>%
+    dplyr::group_by(class) %>%
     dplyr::summarise_if(is.numeric, ~sum(is.na(.x))) %>%
     tidyr::gather(var, value, -class)
 
@@ -33,16 +39,22 @@ missing_plot <- function(df, class){
 #' @importFrom magrittr %>%
 #' @importFrom ggplot2 ggplot aes coord_flip facet_wrap labs theme_bw scale_fill_continuous geom_tile
 #' @param df dataframe with missing values
-#' @param class name of the variable containing classes
+#' @param className name of the variable containing classes
+#' @param varNames vector with the name of the variables to be imputed
 #' @return A plot with the patter of missing values by class, by variable
 #' @export
 #'
 #' @examples
 #' data(data_example)
 #' pattern_plot(data_example, "class")
-pattern_plot <- function(df, class){
+pattern_plot <- function(df, className, varNames){
 
-  df_na <- df %>% dplyr::group_by(class) %>%
+  variables <- c(className, varNames)
+  colnames(df)[which(names(df) == className)] <- "class"
+
+  df_na <- df %>%
+    dplyr::select(one_of(variables)) %>%
+    dplyr::group_by(class) %>%
     dplyr::mutate(obs = dplyr::row_number()) %>%
     dplyr::ungroup() %>%
     tidyr::gather(var, value, -c(class, obs))
