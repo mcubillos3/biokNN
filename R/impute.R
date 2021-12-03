@@ -195,7 +195,7 @@ calibrate <- function(data, className, varNames, prop_valid = 0.1, nIter = 10, d
   }
 
   orig_pattern <- get.index.miss(df_miss)
-  df_miss_valid <- make.missing(df_miss, make.pattern(df_miss, prop_valid))
+  df_miss_valid <- make.missing(df_miss, make.pattern(df_miss, varNames, prop_valid), varNames)
   valid_pattern <- get.valid.pattern(orig_pattern, df_miss_valid)
   metrics <- matrix(ncol = length(k), nrow = length(alpha))
 
@@ -310,10 +310,10 @@ get.index.miss <- function(W){
 }
 
 
-make.missing <- function(data, pattern){
-  vars <- ncol(data)
-  for(i in 1:vars){
-    data[pattern[ , i] == 1, i] <- NA
+make.missing <- function(data, pattern, varNames){
+
+  for(var in varNames){
+    data[pattern[ , var] == 1, var] <- NA
   }
   data
 }
