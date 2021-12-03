@@ -322,7 +322,7 @@ make.missing <- function(data, pattern){
 #' @importFrom stats rbinom
 make.pattern <- function(data, varNames, p = 0.1){
   prop <- p/length(varNames)
-  pattern <- as.data.frame(rep(0, nrow(data), ncol(data)))
+  pattern <- as.data.frame(matrix(0, nrow(data), ncol(data)))
   colnames(pattern) <- colnames(data)
 
   for(var in varNames){
